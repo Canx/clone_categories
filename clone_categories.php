@@ -98,11 +98,31 @@ class cloned_grade_category extends grade_category {
 
 /**** MAIN ******/
 
-// TODO: add args
-// TODO: check if destination has currently grade categories
 
-$origincourseid = 2;
-$destinationcourseid = 3;
+$origincourseid = null;
+$destionationcourseid = null;
+
+if (!defined('STDIN')) {
+  die("script not called from command line.\n");
+}
+
+if ($argc !== 3) {
+  die("need 2 arguments: origin courseid and destination courseid.\n");
+}
+
+$origincourseid = $argv[1];
+$destinationcourseid = $argv[2];
+
+if (!is_int($origincourseid)) {
+  die("origin courseid parameter is not an integer.\n");
+}
+
+if (!is_int($destinationcourseid)) {
+  die("origin courseid parameter is not an integer.\n");
+}
+
+// TODO: check if the courses exist.
+// TODO: check if destination has currently grade categories
 
 $q = new SplQueue();
 $s = new SplObjectStorage();
