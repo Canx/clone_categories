@@ -199,31 +199,3 @@ function print_categories($array) {
         echo $element->fullname . PHP_EOL;
     }
 }
-
-function insert($category, $source=null) {
-
-    if (empty($category->courseid)) {
-        print_error('cannotinsertgrade');
-    }
-
-    if (empty($category->parent)) {
-        $course_category = grade_category::fetch_course_category($category->courseid);
-        $category->parent = $course_category->id;
-    }
-
-    $category->path = null;
-
-    $category->timecreated = $category->timemodified = time();
-
-    if (!parent::insert($source)) {
-        debugging("Could not insert this category: " . print_r($category, true));
-        return false;
-    }
-
-    //$this->force_regrading();
-
-    // build path and depth
-    $category->update($source);
-
-    return $category->id;
-}
