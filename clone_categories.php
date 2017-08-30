@@ -113,11 +113,11 @@ if ($argc !== 3) {
 $origincourseid = $argv[1];
 $destinationcourseid = $argv[2];
 
-if (!is_int($origincourseid)) {
+if (!is_numeric($origincourseid)) {
   die("origin courseid parameter is not an integer.\n");
 }
 
-if (!is_int($destinationcourseid)) {
+if (!is_numeric($destinationcourseid)) {
   die("origin courseid parameter is not an integer.\n");
 }
 
