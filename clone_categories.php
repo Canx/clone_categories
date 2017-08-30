@@ -25,7 +25,7 @@
 
 define('CLI_SCRIPT', 1);
 
-require(__DIR__.'/../../config.php');
+require('../../../config.php');
 require_once($CFG->libdir.'/clilib.php');
 require_once($CFG->libdir.'/grade/constants.php');
 require_once($CFG->libdir.'/gradelib.php');
