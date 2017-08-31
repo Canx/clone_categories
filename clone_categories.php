@@ -23,7 +23,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// FIX: categories are not ordered when copied. Check sortorder.
+// FIX: grade calculations are not copied.
 // TODO: check if the courses exist.
 // TODO: check if destination has currently grade categories
 // TODO: option to keep current categories and attach them to the new root.
@@ -84,12 +84,18 @@ class cloned_grade_category extends grade_category {
         // copy grade_item from $orig_category to $this.
         $orig_grade_item = $this->orig_category->load_grade_item();
 
+        //print "SORTORDER ORIG: " . $orig_grade_item->sortorder;
         $grade_item = new grade_item($orig_grade_item);
         $grade_item->courseid = $this->courseid;
         $grade_item->id = null;
         $grade_item->iteminstance = $this->id;
         $grade_item->insert();
 
+        // PATCH to update sortorder correctly...
+        $grade_item->sortorder = $orig_grade_item->sortorder;
+        $grade_item->update();
+
+        //print "SORTORDER DEST: " . $grade_item->sortorder;
         $this->force_regrading();
         // build path and depth
         $this->update($source);
@@ -216,6 +222,7 @@ class cloned_grade_category extends grade_category {
         if ($categories) {
             foreach($categories as $cat) {
                 // delete grade category and related grade items.
+
                 $cat->delete();
             }
         }
