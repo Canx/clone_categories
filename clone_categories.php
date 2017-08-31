@@ -23,7 +23,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// FIX: grade calculations are not copied.
+// TODO: extract traverse function to be reused.
 // TODO: check if the courses exist.
 // TODO: check if destination has currently grade categories
 // TODO: option to keep current categories and attach them to the new root.
@@ -40,6 +40,8 @@ require_once($CFG->libdir.'/grade/grade_item.php');
 
 class cloned_grade_category extends grade_category {
     public $orig_category;
+    public static $equivalence;
+    public static $item_equivalence;
 
     public function __construct($params=NULL, $fetch=true) {
         if ($params == null) {
@@ -90,6 +92,9 @@ class cloned_grade_category extends grade_category {
         $grade_item->id = null;
         $grade_item->iteminstance = $this->id;
         $grade_item->insert();
+
+        // Save item equivalence
+        self::$item_equivalence[$orig_grade_item->id] = $grade_item->id;
 
         // PATCH to update sortorder correctly...
         $grade_item->sortorder = $orig_grade_item->sortorder;
@@ -152,8 +157,6 @@ class cloned_grade_category extends grade_category {
 
         cloned_grade_category::delete_tree($destinationcourseid);
 
-        $equivalence = null;
-
         while(!$q->isEmpty()) {
             $orig_current = $q->dequeue();
 
@@ -175,14 +178,14 @@ class cloned_grade_category extends grade_category {
             }
             else {
                 $cloned_current->itemtype = 'category';
-                $cloned_current->parent = $equivalence[$orig_current->parent];
+                $cloned_current->parent = self::$equivalence[$orig_current->parent];
                 grade_category::build_path($cloned_current);
                 //$cloned_current->insert();
                 $cloned_current->insert();
             }
 
             // TODO: check insert.
-            $equivalence[$orig_current->id] = $cloned_current->id;
+            self::$equivalence[$orig_current->id] = $cloned_current->id;
 
             $children = cloned_grade_category::get_static_children($orig_current, $cat_array);
             foreach($children as $child) {
@@ -194,6 +197,9 @@ class cloned_grade_category extends grade_category {
                 }
             }
         }
+
+        // Fix formula ids
+        self::fix_formula_ids($destinationcourseid);
     }
 
     static function print_number_categories($courseid) {
@@ -245,6 +251,21 @@ class cloned_grade_category extends grade_category {
         }
     }
 
+    static function fix_formula_ids($courseid) {
+        $items = grade_object::fetch_all_helper("grade_items", "grade_item", ['courseid' => $courseid]);
+        if ($items) {
+            foreach($items as $item) {
+                if ($item->calculation) {
+                    if (preg_match_all('/##gi(\d+)##/', $item->calculation, $matches)) {
+                        foreach ($matches[1] as $id) {
+                            $item->calculation = str_replace('##gi'.$id.'##', '##gi'. self::$item_equivalence[$id] .'##', $item->calculation);
+                        }
+                        $item->update();
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**** MAIN ******/
