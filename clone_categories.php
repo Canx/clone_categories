@@ -23,7 +23,6 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// FIX: bug when changing from undelete to delete.
 // TODO: copy scales.
 // TODO: copy letters.
 // TODO: extract traverse function to be reused.
@@ -143,7 +142,10 @@ class cloned_grade_category extends grade_category {
         // TODO: update sortorder
     }
 
-    public static function clone_tree($origincourseid, $destinationcourseid, $deletetree = false) {
+    public static function clone_tree($origincourseid, $destinationcourseid) {
+        // Preservation of categories does not work well.
+        $deletetree = true;
+
         if (!is_numeric($origincourseid)) {
             die("origin courseid parameter is not an integer.\n");
         }
@@ -238,6 +240,16 @@ class cloned_grade_category extends grade_category {
         // Copy grade letters
         self::copy_letters($origincourseid, $destinationcourseid);
 
+        // Copy scales
+        self::copy_scales($origincourseid, $destinationcourseid);
+
+        // TODO: fix letter and grade association in grade_items
+        self::fix_letters($destinationcourseid);
+        self::fix_scales($destinationcourseid);
+
+
+
+
         // Clean cache
         grade_category::clean_record_set();
 
@@ -310,6 +322,11 @@ class cloned_grade_category extends grade_category {
         }
     }
 
+    // TODO
+    static function fix_letters($destinationcourseid) {}
+
+    // TODO
+    static function fix_scales($destinationcourseid) {}
 
     // find contextid related to course to filter letters.
     // and then change to the new contextid.
@@ -319,12 +336,29 @@ class cloned_grade_category extends grade_category {
         $origincontext = context_course::instance($origincourseid);
         $destinationcontext = context_course::instance($destinationcourseid);
 
+        $DB->delete_records('grade_letters', array('contextid'=>$destinationcontext->id));
+
         $records = $DB->get_records('grade_letters', array('contextid'=>$origincontext->id), 'lowerboundary DESC');
 
         foreach ($records as $record) {
             $record->contextid = $destinationcontext->id;
             $record->id = null;
             $DB->insert_record('grade_letters', $record);
+        }
+    }
+
+    // copy course scales to destination course.
+    static function copy_scales($origincourseid, $destinationcourseid) {
+        global $DB;
+
+        $DB->delete_records('scale', array('courseid'=>$destinationcourseid));
+
+        $records = $DB->get_records('scale', ['courseid'=>$origincourseid]);
+
+        foreach ($records as $record) {
+            $record->courseid = $destinationcourseid;
+            $record->id = null;
+            $DB->insert_record('scale', $record);
         }
     }
 }
@@ -345,4 +379,4 @@ if ($argc !== 3) {
 $origincourseid = $argv[1];
 $destinationcourseid = $argv[2];
 
-cloned_grade_category::clone_tree($origincourseid, $destinationcourseid, true);
+cloned_grade_category::clone_tree($origincourseid, $destinationcourseid);
