@@ -173,7 +173,7 @@ class cloned_grade_category extends grade_category {
         }
     }
 
-    public static function clone_tree_v2($origincourseid, $destinationcourseid) {
+    public static function clone_tree($origincourseid, $destinationcourseid) {
         // delete grades from destination first.
         self::delete_grade_tree($destinationcourseid);
 
@@ -419,6 +419,4 @@ if ($argc !== 3) {
 $origincourseid = $argv[1];
 $destinationcourseid = $argv[2];
 
-// TESTING
-//cloned_grade_category::clone_tree($origincourseid, $destinationcourseid);
-cloned_grade_category::clone_tree_v2($origincourseid, $destinationcourseid);
+cloned_grade_category::clone_tree($origincourseid, $destinationcourseid);
