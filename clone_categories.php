@@ -23,9 +23,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// TODO: copy scales.
-// TODO: copy letters.
-// TODO: extract traverse function to be reused.
+// TODO: copy manual grade items
 // TODO: check if the courses exist.
 // TODO: check if destination has currently grade categories
 // TODO: option to keep current categories and attach them to the new root.
@@ -45,6 +43,8 @@ class cloned_grade_category extends grade_category {
     public static $new_root;
     public static $equivalence;
     public static $item_equivalence;
+    public static $letter_equivalence;
+    public static $scale_equivalence;
 
     public function __construct($params=NULL, $fetch=true) {
         if ($params == null) {
@@ -59,6 +59,14 @@ class cloned_grade_category extends grade_category {
         }
 
         parent::__construct($params, $fetch);
+    }
+
+    public function __call($method, $args)
+    {
+        if (isset($this->$method)) {
+            $func = $this->$method;
+            return call_user_func_array($func, $args);
+        }
     }
 
     public function insert($source=null, $root=false) {
@@ -142,118 +150,96 @@ class cloned_grade_category extends grade_category {
         // TODO: update sortorder
     }
 
-    public static function clone_tree($origincourseid, $destinationcourseid) {
-        // Preservation of categories does not work well.
-        $deletetree = true;
-
-        if (!is_numeric($origincourseid)) {
-            die("origin courseid parameter is not an integer.\n");
-        }
-
-        if (!is_numeric($destinationcourseid)) {
-            die("origin courseid parameter is not an integer.\n");
-        }
-
+    public function traverse(callable $action) {
         $q = new SplQueue();
         $s = new SplObjectStorage();
 
-        // Clean cache
-        grade_category::clean_record_set();
-
-        $cat_array = grade_category::fetch_all(['courseid'=>$origincourseid]);
-
-        $dest_root =  grade_category::fetch_course_category($destinationcourseid);
-
-        if (!$cat_array) {
-            die("No grade categories found for origin courseid. Maybe course doesn't exist?\n");
-        }
-
-        // get root element
-        $root = null;
-        foreach($cat_array as $element) {
-            if ($element->parent == null) {
-                $root = $element;
-            }
-        }
-
-        if ($root == null) {
-            die("No root category found for origin courseid.\n");
-        }
-
-        $s->attach($root);
-        $q->enqueue($root);
-
-        if ($deletetree) {
-            cloned_grade_category::delete_tree($destinationcourseid);
-        }
+        $s->attach($this);
+        $q->enqueue($this);
 
         while(!$q->isEmpty()) {
-            $orig_current = $q->dequeue();
+            $current = $q->dequeue();
 
-            // process current
-            print "copying " . $orig_current->fullname . "..." . PHP_EOL;
+            // call function with current element
+            $action($current);
 
-            //print_number_categories($destinationcourseid);
-            $cloned_current = new cloned_grade_category($orig_current, false);
-            $cloned_current->courseid = $destinationcourseid;
-            $cloned_current->id = null;
-            $cloned_current->children = null;
+            $children = $current->get_children();
 
-            // update parent for new node.
-            if ($orig_current->parent == null) {
-                $cloned_current->itemtype = 'course';
-                $cloned_current->parent = null;
-                //$cloned_current->insert_root();
-                $cloned_current->insert(null, true);
-                self::$new_root = $cloned_current;
-            }
-            else {
-                $cloned_current->itemtype = 'category';
-                $cloned_current->parent = self::$equivalence[$orig_current->parent];
-                grade_category::build_path($cloned_current);
-                //$cloned_current->insert();
-                $cloned_current->insert();
-            }
-
-            // TODO: check insert.
-            self::$equivalence[$orig_current->id] = $cloned_current->id;
-
-            $children = cloned_grade_category::get_static_children($orig_current, $cat_array);
             foreach($children as $child) {
-                if (is_a($child, 'grade_category')) {
-                    if (!$s->contains($child)) {
-                        $s->attach($child);
-                        $q->enqueue($child);
-                    }
+                if (!$s->contains($child)) {
+                    $s->attach($child);
+                    $q->enqueue($child);
                 }
             }
         }
+    }
 
-        // attach old root to current one and hide it.
-        if (!$deletetree) {
-            self::$new_root->attach($dest_root);
-        }
+    public static function clone_tree_v2($origincourseid, $destinationcourseid) {
+        // delete grades from destination first.
+        self::delete_grade_tree($destinationcourseid);
+
+        // clone scales and letters
+        self::copy_letters($origincourseid, $destinationcourseid);
+        self::copy_scales($origincourseid, $destinationcourseid);
+
+        // clone grades and items
+        self::copy_grades($origincourseid, $destinationcourseid);
 
         // Fix formula ids
         self::fix_formula_ids($destinationcourseid);
 
-        // Copy grade letters
-        self::copy_letters($origincourseid, $destinationcourseid);
-
-        // Copy scales
-        self::copy_scales($origincourseid, $destinationcourseid);
-
-        // TODO: fix letter and grade association in grade_items
-        self::fix_letters($destinationcourseid);
+        // Fix scale ids in categories
         self::fix_scales($destinationcourseid);
-
-
-
-
-        // Clean cache
-        grade_category::clean_record_set();
-
     }
+
+    // copy grade categories and grade items
+    public static function copy_grades($origincourseid, $destinationcourseid) {
+        $cloned_root =  cloned_grade_category::fetch_course_category($origincourseid);
+
+        $cloned_root->traverse(function($category) use($destinationcourseid){
+            print "copying " . $category->fullname . "..." . PHP_EOL;
+
+            // Creo que no hace falta construir un nuevo objeto...
+            $cloned = new cloned_grade_category($category, false);
+            $cloned->courseid = $destinationcourseid;
+            $cloned->id = null;
+            $cloned->children = null;
+
+            // update parent for new node.
+            if ($category->parent == null) {
+                $cloned->itemtype = 'course';
+                $cloned->parent = null;
+                $cloned->insert(null, true);
+                self::$new_root = $cloned;
+            }
+            else {
+                $cloned->itemtype = 'category';
+                $cloned->parent = self::$equivalence[$category->parent];
+                grade_category::build_path($cloned);
+                $cloned->insert();
+            }
+
+            self::$equivalence[$category->id] = $cloned->id;
+        });
+    }
+
+    public function get_children($include_category_items = false) {
+        $categories = [];
+
+        $array = parent::get_children(true);
+
+        foreach($array as $element) {
+            if ($element['type'] == "category") {
+                $cloned_element = new cloned_grade_category($element['object']);
+                $categories[] = $cloned_element;
+            }
+        }
+
+        return $categories;
+    }
+
+
+
 
     static function print_number_categories($courseid) {
         $temp_categories = grade_object::fetch_all_helper("grade_categories", "grade_category", ['courseid' => $courseid]);
@@ -275,7 +261,7 @@ class cloned_grade_category extends grade_category {
         }
     }
 
-    static function delete_tree($courseid) {
+    static function delete_grade_tree($courseid) {
         $categories = grade_category::fetch_all(['courseid'=>$courseid]);
 
         if ($categories) {
@@ -305,6 +291,7 @@ class cloned_grade_category extends grade_category {
     }
 
     static function fix_formula_ids($courseid) {
+        // TODO: use get_grade_item?
         $items = grade_object::fetch_all_helper("grade_items", "grade_item", ['courseid' => $courseid]);
         if ($items) {
             foreach($items as $item) {
@@ -322,11 +309,18 @@ class cloned_grade_category extends grade_category {
         }
     }
 
-    // TODO
-    static function fix_letters($destinationcourseid) {}
+    static function fix_scales($destinationcourseid) {
+        $cloned_root =  cloned_grade_category::fetch_course_category($destinationcourseid);
 
-    // TODO
-    static function fix_scales($destinationcourseid) {}
+        $cloned_root->traverse(function($category) use($destinationcourseid) {
+            $item = $category->get_grade_item();
+
+            if (!empty($item->scaleid)) {
+                $item->scaleid = self::$scale_equivalence[$item->scaleid];
+                $item->update();
+            }
+        });
+    }
 
     // find contextid related to course to filter letters.
     // and then change to the new contextid.
@@ -342,8 +336,10 @@ class cloned_grade_category extends grade_category {
 
         foreach ($records as $record) {
             $record->contextid = $destinationcontext->id;
+            $record_id = $record->id;
             $record->id = null;
-            $DB->insert_record('grade_letters', $record);
+            $newrecord_id = $DB->insert_record('grade_letters', $record);
+            self::$letter_equivalence[$record_id]= $newrecord_id;
         }
     }
 
@@ -357,10 +353,133 @@ class cloned_grade_category extends grade_category {
 
         foreach ($records as $record) {
             $record->courseid = $destinationcourseid;
+            $record_id = $record->id;
             $record->id = null;
-            $DB->insert_record('scale', $record);
+            $newrecord_id = $DB->insert_record('scale', $record);
+            self::$scale_equivalence[$record_id] = $newrecord_id;
+
         }
     }
+
+    public static function fetch_course_category($destinationcourseid) {
+        $grade_category = parent::fetch_course_category($destinationcourseid);
+        return new cloned_grade_category($grade_category);
+    }
+
+//     public static function clone_tree($origincourseid, $destinationcourseid) {
+//         // Preservation of categories does not work well.
+//         $deletetree = true;
+
+//         if (!is_numeric($origincourseid)) {
+//             die("origin courseid parameter is not an integer.\n");
+//         }
+
+//         if (!is_numeric($destinationcourseid)) {
+//             die("origin courseid parameter is not an integer.\n");
+//         }
+
+//         $q = new SplQueue();
+//         $s = new SplObjectStorage();
+
+//         // Clean cache
+//         grade_category::clean_record_set();
+
+//         $cat_array = grade_category::fetch_all(['courseid'=>$origincourseid]);
+
+//         $dest_root =  grade_category::fetch_course_category($destinationcourseid);
+
+//         if (!$cat_array) {
+//             die("No grade categories found for origin courseid. Maybe course doesn't exist?\n");
+//         }
+
+//         // Copy grade letters
+//         self::copy_letters($origincourseid, $destinationcourseid);
+
+//         // Copy scales
+//         self::copy_scales($origincourseid, $destinationcourseid);
+
+//         // get root element
+//         $root = null;
+//         foreach($cat_array as $element) {
+//             if ($element->parent == null) {
+//                 $root = $element;
+//             }
+//         }
+
+//         if ($root == null) {
+//             die("No root category found for origin courseid.\n");
+//         }
+
+//         $s->attach($root);
+//         $q->enqueue($root);
+
+//         if ($deletetree) {
+//             cloned_grade_category::delete_tree($destinationcourseid);
+//         }
+
+//         while(!$q->isEmpty()) {
+//             $orig_current = $q->dequeue();
+
+//             // process current
+//             print "copying " . $orig_current->fullname . "..." . PHP_EOL;
+
+//             //print_number_categories($destinationcourseid);
+//             $cloned_current = new cloned_grade_category($orig_current, false);
+//             $cloned_current->courseid = $destinationcourseid;
+//             $cloned_current->id = null;
+//             $cloned_current->children = null;
+
+//             // update parent for new node.
+//             if ($orig_current->parent == null) {
+//                 $cloned_current->itemtype = 'course';
+//                 $cloned_current->parent = null;
+//                 //$cloned_current->insert_root();
+//                 $cloned_current->insert(null, true);
+//                 self::$new_root = $cloned_current;
+//             }
+//             else {
+//                 $cloned_current->itemtype = 'category';
+//                 $cloned_current->parent = self::$equivalence[$orig_current->parent];
+//                 grade_category::build_path($cloned_current);
+//                 //$cloned_current->insert();
+//                 $cloned_current->insert();
+//             }
+
+//             // TODO: check insert.
+//             self::$equivalence[$orig_current->id] = $cloned_current->id;
+
+//             $children = cloned_grade_category::get_static_children($orig_current, $cat_array);
+//             foreach($children as $child) {
+//                 if (is_a($child, 'grade_category')) {
+//                     if (!$s->contains($child)) {
+//                         $s->attach($child);
+//                         $q->enqueue($child);
+//                     }
+//                 }
+//             }
+//         }
+
+//         // attach old root to current one and hide it.
+//         if (!$deletetree) {
+//             self::$new_root->attach($dest_root);
+//         }
+
+//         // Fix formula ids
+//         self::fix_formula_ids($destinationcourseid);
+
+
+//         // TODO: fix letter and grade association in grade_items
+//         self::fix_letters($destinationcourseid);
+//         self::fix_scales($destinationcourseid);
+
+
+
+
+//         // Clean cache
+//         grade_category::clean_record_set();
+
+//     }
+
 }
 
 /**** MAIN ******/
@@ -379,4 +498,6 @@ if ($argc !== 3) {
 $origincourseid = $argv[1];
 $destinationcourseid = $argv[2];
 
-cloned_grade_category::clone_tree($origincourseid, $destinationcourseid);
+// TESTING
+//cloned_grade_category::clone_tree($origincourseid, $destinationcourseid);
+cloned_grade_category::clone_tree_v2($origincourseid, $destinationcourseid);
