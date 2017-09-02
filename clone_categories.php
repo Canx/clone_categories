@@ -26,6 +26,7 @@
 // TODO: check if the courses exist.
 // TODO: check if destination has currently grade categories
 // TODO: option to keep current categories and attach them to the new root.
+// TODO: copy outcomes if needed.
 
 define('CLI_SCRIPT', 1);
 
@@ -46,7 +47,7 @@ class cloned_grade_category extends grade_category {
 
     public function __construct($params=NULL, $fetch=true) {
         if ($params == null) {
-            die("falta objeto en constructor");
+            die("need object in cloned_grade_category constructor.");
         }
         if (is_a($params, 'grade_category')) {
             $this->orig_category = $params;
@@ -57,14 +58,6 @@ class cloned_grade_category extends grade_category {
         }
 
         parent::__construct($params, $fetch);
-    }
-
-    public function __call($method, $args)
-    {
-        if (isset($this->$method)) {
-            $func = $this->$method;
-            return call_user_func_array($func, $args);
-        }
     }
 
     public function insert($source=null, $root=false) {
