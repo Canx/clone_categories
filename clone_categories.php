@@ -23,6 +23,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// TODO: current manual grade items and activity grade items should be preserved in a "Orphaned" category.
 // TODO: check if the courses exist.
 // TODO: check if destination has currently grade categories
 // TODO: option to keep current categories and attach them to the new root.
@@ -167,8 +168,13 @@ class cloned_grade_category extends grade_category {
     }
 
     public static function clone_tree($origincourseid, $destinationcourseid) {
+	
+
         // delete grades from destination first.
         self::delete_grade_tree($destinationcourseid);
+
+	// TODO: don't delete the full grade tree, preserve course grade items! 
+	//self::orphanize_current_items($destinationcourseid);
 
         // copy scales and letters
         self::copy_letters($origincourseid, $destinationcourseid);
